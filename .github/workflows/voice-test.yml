@@ -218,8 +218,9 @@ jobs:
           COPY --from=builder /opt/models /opt/models
           COPY --from=builder /opt/qwentts/build-portable/ /opt/qwentts/build/
           ENV PATH="/opt/qwentts/build:${PATH}"
+          ENV LD_LIBRARY_PATH="/opt/qwentts/build"
           WORKDIR /workspace
-          RUN test -x /opt/qwentts/build/qwen-tts && test -s /opt/models/renikud/model.onnx \
+          RUN test -e /opt/qwentts/build/libggml.so.0 && test -x /opt/qwentts/build/qwen-tts && test -s /opt/models/renikud/model.onnx \
               && python -c "from renikud_onnx import G2P; print(G2P(model_path='/opt/models/renikud/model.onnx',niqqud='use',datastore=None).phonemize('סוֹד',speaker=2,target_speaker=2))" \
               && ( /opt/qwentts/build/qwen-tts --help > /tmp/qwen-help.txt 2>&1; code=$?; cat /tmp/qwen-help.txt; test "$code" -eq 1; grep -q "Usage:" /tmp/qwen-help.txt )
           DOCKERFILE
