@@ -1,4 +1,5 @@
-name: "ניסוי קול: מקור סינתטי ועברית"
+name: "בדיקת קול כסוף בעברית - יצירה, תמלול ותוצאות"
+run-name: "בדיקת עברית בקול הכסוף (שלב ${{ inputs.phase }})"
 on:
   workflow_dispatch:
     inputs:
@@ -24,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake build-essential libsndfile1
+          sudo apt-get install -y -qq cmake build-essential libsndfile1 ffmpeg
           git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/ServeurpersoCom/qwentts.cpp.git qwentts
           cmake -S qwentts -B qwentts/build -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build qwentts/build -j 2
