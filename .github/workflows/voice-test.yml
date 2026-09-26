@@ -280,7 +280,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
-      image: ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:d59bf349ff0baaf62d50ce0b87370a8d306a15d8e87d40022afaf3c87572cf66
+      image: ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:60b2788f7de64b33f6ad49a79b8cf5650de8b9ca0626bd44142d9387b41c7a3f
     defaults:
       run:
         shell: bash
