@@ -24,14 +24,17 @@ jobs:
       - name: "2. הורדת מודל עברית וכלי יצירה"
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake build-essential libsndfile1 ffmpeg
-          git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/ServeurpersoCom/qwentts.cpp.git qwentts
-          cmake -S qwentts -B qwentts/build -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build qwentts/build -j 2
+          echo "⏳ מתקינה כלי בנייה ובדיקת אודיו..."
+          if ! (sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cmake build-essential libsndfile1 ffmpeg) >/tmp/install.log 2>&1; then cat /tmp/install.log; exit 1; fi
+          echo "✅ כלי הבנייה והאודיו הותקנו"
+          echo "⏳ בונה מנוע קול עברי..."
+          if ! (git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/ServeurpersoCom/qwentts.cpp.git qwentts && cmake -S qwentts -B qwentts/build -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release && cmake --build qwentts/build -j 2) >/tmp/build.log 2>&1; then cat /tmp/build.log; exit 1; fi
+          echo "✅ מנוע הקול נבנה"
           mkdir -p models
-          curl -fL --retry 3 -o models/talker.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf
-          curl -fL --retry 3 -o models/codec.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf
+          echo "⬇️ מורידה מודל עברית (כ-1.5GB)..."
+          curl -fsSL --retry 3 -o models/talker.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf
+          curl -fsSL --retry 3 -o models/codec.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf
+          echo "✅ מודל העברית מוכן"
           echo "מודל העברית וכלי היצירה מוכנים" >> "$GITHUB_STEP_SUMMARY"
       - name: "3. הורדת הקול הכסוף שנוצר בניסוי"
         env:
@@ -41,19 +44,26 @@ jobs:
           gh api repos/${{ github.repository }}/actions/artifacts/10913764092/zip > references.zip
           unzip -p references.zip silver.wav > silver.wav
           printf '%s\n' 'The quiet signal was hidden beneath the noise. Now we know where to look.' > silver.txt
+          echo "⏳ בודקת את דגימת הקול הכסוף..."
           ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 silver.wav
+          echo "✅ הקול הכסוף מוכן"
           echo "דגימת קול מקורית: silver.wav (5.44 שניות)" >> "$GITHUB_STEP_SUMMARY"
       - name: "4. יצירת משפט מבחן בעברית"
         run: |
           set -euo pipefail
           mkdir -p hebrew-output
-          printf '%s' 'ʃalˈom, mˈa ʃlomχˈa hajˈom?' | qwentts/build/qwen-tts --model models/talker.gguf --codec models/codec.gguf --ref-wav silver.wav --ref-text silver.txt --lang auto --greedy -o hebrew-output/silver-hebrew.wav
+          echo "⏳ יוצרת משפט עברי בקול הכסוף..."
+          if ! printf '%s' 'ʃalˈom, mˈa ʃlomχˈa hajˈom?' | qwentts/build/qwen-tts --model models/talker.gguf --codec models/codec.gguf --ref-wav silver.wav --ref-text silver.txt --lang auto --greedy -o hebrew-output/silver-hebrew.wav >/tmp/synthesis.log 2>&1; then cat /tmp/synthesis.log; exit 1; fi
+          echo "✅ דגימת העברית נוצרה"
           echo "נוצר משפט בדיקה: שלום, מה שלומך היום?" >> "$GITHUB_STEP_SUMMARY"
       - name: "5. בדיקת הבנה באמצעות תמלול"
         run: |
           set -euo pipefail
-          pip install --disable-pip-version-check soundfile faster-whisper
+          echo "⏳ מתקינה כלי תמלול..."
+          if ! pip install -q --disable-pip-version-check soundfile faster-whisper >/tmp/asr-install.log 2>&1; then cat /tmp/asr-install.log; exit 1; fi
+          echo "⏳ בודקת הבנה בעברית..."
           python generate.py check-hebrew
+          echo "✅ בדיקת התמלול הסתיימה"
           echo "תמלול אוטומטי (לא אישור סופי): $(cat hebrew-output/asr.txt)" >> "$GITHUB_STEP_SUMMARY"
       - name: "6. העלאת דגימה ותמלול"
         if: always()
