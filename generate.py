@@ -67,7 +67,7 @@ def compare_variants():
     for pname,prompt in prompts:
       for sname,flags in specs:
         key=f'{pname}-{sname}'; out=root/f'{key}.wav'
-        cmd=['qwentts/build/qwen-tts','--model','models/talker.gguf','--codec','models/codec.gguf',*flags,'--lang','auto','-o',str(out)]
+        cmd=['qwen-tts','--model','/opt/models/talker.gguf','--codec','/opt/models/codec.gguf',*flags,'--lang','auto','-o',str(out)]
         print('⏳ יוצרת גרסה',key,flush=True)
         try:
           subprocess.run(cmd,input=prompt,text=True,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=240)
@@ -128,7 +128,7 @@ def mysterious_hebrew():
       short=root/f'{name}-short.wav'
       subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(ref),'-t','2.7','-af','afade=t=out:st=2.45:d=0.25',str(short)],check=True)
       out=root/f'{name}.wav'
-      cmd=['qwentts/build/qwen-tts','--model','models/talker.gguf','--codec','models/codec.gguf','--ref-wav',str(short),'--temp','0.55','--sub-temp','0.55','--seed','42','--lang','auto','-o',str(out)]
+      cmd=['qwen-tts','--model','/opt/models/talker.gguf','--codec','/opt/models/codec.gguf','--ref-wav',str(short),'--temp','0.55','--sub-temp','0.55','--seed','42','--lang','auto','-o',str(out)]
       print('⏳ יוצרת משפט מסתורי',name,flush=True)
       subprocess.run(cmd,input=ipa,text=True,check=True,stderr=subprocess.PIPE,timeout=240)
       audio,sr=sf.read(out)
