@@ -8,7 +8,7 @@ on:
         required: true
         default: hebrew
         type: choice
-        options: [hebrew, references, mysterious, image-bootstrap]
+        options: [hebrew, references, mysterious, image-bootstrap, image-build]
 permissions:
   contents: read
   actions: read
@@ -110,6 +110,58 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap
           docker image inspect ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap --format '{{.Size}} bytes local image'
+  image:
+    if: inputs.phase == 'image-build'
+    name: "בניית אימג׳ ציבורי שנבדק ללא מידע פרטי"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "1. הכנת Dockerfile ובדיקת היעדר נתונים פרטיים"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/public-voice-image
+          cat > /tmp/public-voice-image/Dockerfile <<'DOCKERFILE'
+          FROM python:3.12-slim-bookworm
+          LABEL org.opencontainers.image.description="Public open-source synthetic Hebrew voice runtime; no user data or generated audio."
+          ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              ca-certificates curl git cmake build-essential libsndfile1 ffmpeg unzip \
+              && rm -rf /var/lib/apt/lists/*
+          RUN python -m pip install --no-cache-dir 'torch==2.8.0+cpu' 'torchaudio==2.8.0+cpu' --index-url https://download.pytorch.org/whl/cpu \
+              && python -m pip install --no-cache-dir 'qwen-tts==0.1.1' soundfile faster-whisper 'renikud-plus==0.5.0'
+          RUN git clone -q https://github.com/ServeurpersoCom/qwentts.cpp.git /opt/qwentts \
+              && git -C /opt/qwentts checkout -q 6a3e91283220197bad2ae1eb40ae1c1392bfd820 \
+              && git -C /opt/qwentts submodule update --init --recursive -q \
+              && cmake -S /opt/qwentts -B /opt/qwentts/build -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release \
+              && cmake --build /opt/qwentts/build -j 2 \
+              && rm -rf /opt/qwentts/.git /opt/qwentts/build/_deps
+          RUN mkdir -p /opt/models \
+              && curl -fsSL --retry 3 -o /opt/models/talker.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf \
+              && curl -fsSL --retry 3 -o /opt/models/codec.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf \
+              && test "$(wc -c </opt/models/talker.gguf)" -gt 1000000000 \
+              && test "$(wc -c </opt/models/codec.gguf)" -gt 200000000
+          ENV PATH="/opt/qwentts/build:${PATH}"
+          WORKDIR /workspace
+          DOCKERFILE
+          echo "✅ הקונטקסט מכיל Dockerfile יחיד; אין העתקת קבצים או סודות לתמונה"
+          find /tmp/public-voice-image -maxdepth 1 -type f -printf '%f\n'
+      - name: "2. בניית אימג׳ מהכלים והמודלים הפתוחים בלבד"
+        run: |
+          set -euo pipefail
+          docker build --pull -t ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v1 /tmp/public-voice-image
+          docker history --no-trunc ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v1 | head -35
+          docker run --rm ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v1 sh -c 'test -x /opt/qwentts/build/qwen-tts && test -s /opt/models/talker.gguf && test -s /opt/models/codec.gguf && ffmpeg -version >/dev/null && python -c "import qwen_tts, faster_whisper, soundfile; print(\"runtime imports pass\")"'
+      - name: "3. העלאה לחבילה הציבורית שכבר אומתה"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v1
+          echo "✅ אימג׳ runtime-v1 הועלה; את הדיג׳סט קובעים מקריאת החבילה" >> "$GITHUB_STEP_SUMMARY"
   mysterious:
     if: inputs.phase == 'mysterious'
     name: "שלוש גרסאות מסתוריות של הקול הכסוף"
@@ -170,13 +222,27 @@ jobs:
             echo "✅ מקודד שמע שוחזר מהמטמון"
           fi
           echo "✅ מודל העברית מוכן" >> "$GITHUB_STEP_SUMMARY"
-      - name: "5. משפט עברי מסתורי ובדיקת שלוש דגימות שונות"
+      - name: "5. הכנת הגייה עברית מנוקדת במודל G2P"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: "6. יצירת הגייה ובדיקת שלוש דגימות שונות"
         run: |
           set -euo pipefail
-          pip install -q faster-whisper
+          python -m pip install -q 'renikud-plus==0.5.0' faster-whisper soundfile
+          mkdir -p mysterious-output
+          python - <<'PY_G2P'
+          from renikud_onnx import G2P
+          from pathlib import Path
+          text='יֵשׁ לִי סוֹד קָטָן... וַאֲנִי אֲגַלֶּה לְךָ אוֹתוֹ רַק בְּסוֹף הַשִּׁיעוּר.'
+          g2p=G2P(niqqud='use')
+          ipa=g2p.phonemize(text,speaker=2,target_speaker=2)
+          print('IPA verified from pointed Hebrew:',ipa)
+          Path('mysterious-output/prompt.ipa').write_text(ipa,encoding='utf-8')
+          PY_G2P
           python generate.py mysterious-hebrew
           cat mysterious-output/results.md >> "$GITHUB_STEP_SUMMARY"
-      - name: "6. העלאת הדגימות וטבלת ההבנה"
+      - name: "7. העלאת הדגימות וטבלת ההבנה"
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -184,6 +250,9 @@ jobs:
           path: |
             mysterious-output/*.ogg
             mysterious-output/results.md
+            mysterious-output/prompt.ipa
+            mysterious-references/*.wav
+            mysterious-references/*.txt
           if-no-files-found: warn
           retention-days: 1
   references:
