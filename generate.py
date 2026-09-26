@@ -91,8 +91,64 @@ def compare_variants():
       subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(root/f'{key}.wav'),'-c:a','libopus','-b:a','32k',str(root/f'{key}.ogg')],check=True)
     if not results: raise RuntimeError('No usable samples generated')
 
+def mysterious_references():
+    """Three original fictional female voices derived from the silver design brief."""
+    import torch
+    from qwen_tts import Qwen3TTSModel
+    out=Path('mysterious-references');out.mkdir(exist_ok=True)
+    text='There is a small secret in this lesson. Wait for the last page, and I will tell you what it is.'
+    designs={
+      'velvet':'An original fictional female narrator, not any real person. Keep the sweet, airy, bell-like silver voice. Add quiet mystery: slightly lower pitch, intimate breathy softness, slow measured phrasing, subtle pauses, clear consonants. Natural, never theatrical.',
+      'moon':'An original fictional female narrator, not any real person. Sweet silver soprano with a soft, dusky undertone. Whisper-adjacent but fully voiced, thoughtful pauses and a half-smile, calm suspense, clean articulation and a natural rhythm.',
+      'secret':'An original fictional female narrator, not any real person. An ethereal silver female voice, warm and sweet, now carrying a private secret. Low-volume intimate delivery, slightly husky lower register, unhurried, expressive but restrained, no imitation.',
+    }
+    model=Qwen3TTSModel.from_pretrained('Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign',device_map='cpu',dtype=torch.float32,attn_implementation='sdpa')
+    for name,instruct in designs.items():
+      with torch.inference_mode():
+        audio,sr=model.generate_voice_design(text=text,language='English',instruct=instruct,non_streaming_mode=True,max_new_tokens=2048)
+      sf.write(out/f'{name}.wav',audio[0],sr)
+      (out/f'{name}.txt').write_text(text,encoding='utf-8')
+      print('✅ דגימת מקור',name,round(len(audio[0])/sr,2),'שניות',flush=True)
+      del audio;gc.collect()
+
+
+def mysterious_hebrew():
+    from faster_whisper import WhisperModel
+    from difflib import SequenceMatcher
+    import subprocess,hashlib
+    root=Path('mysterious-output');root.mkdir(exist_ok=True)
+    target='יש לי סוד קטן, ואני אגלה לך אותו רק בסוף השיעור.'
+    ipa='jeʃ li sod kaˈtan... vaʔaˈni ʔaɡaˈle leˈχa ʔoto rak bəˈsof haʃiˈʔur.'
+    model=WhisperModel('small',device='cpu',compute_type='int8')
+    rows=[];fingerprints=set()
+    for name in ('velvet','moon','secret'):
+      ref=Path('mysterious-references')/f'{name}.wav'
+      short=root/f'{name}-short.wav'
+      subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(ref),'-t','2.7','-af','afade=t=out:st=2.45:d=0.25',str(short)],check=True)
+      out=root/f'{name}.wav'
+      cmd=['qwentts/build/qwen-tts','--model','models/talker.gguf','--codec','models/codec.gguf','--ref-wav',str(short),'--temp','0.55','--sub-temp','0.55','--seed','42','--lang','auto','-o',str(out)]
+      print('⏳ יוצרת משפט מסתורי',name,flush=True)
+      subprocess.run(cmd,input=ipa,text=True,check=True,stderr=subprocess.PIPE,timeout=240)
+      audio,sr=sf.read(out)
+      if not 2<len(audio)/sr<30: raise RuntimeError(f'Unexpected length for {name}')
+      pcm=subprocess.check_output(['ffmpeg','-v','error','-i',str(out),'-f','s16le','-acodec','pcm_s16le','-'])
+      digest=hashlib.sha256(pcm).hexdigest()
+      if digest in fingerprints: raise RuntimeError(f'Duplicate PCM: {name}')
+      fingerprints.add(digest)
+      segments,_=model.transcribe(str(out),language='he',beam_size=5)
+      heard=' '.join(seg.text.strip() for seg in segments)
+      score=SequenceMatcher(None,target.replace(' ','').replace('.','').replace(',',''),heard.replace(' ','').replace('.','').replace(',','')).ratio()
+      subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(out),'-c:a','libopus','-b:a','32k',str(root/f'{name}.ogg')],check=True)
+      rows.append((name,round(score,3),heard,round(len(audio)/sr,2),digest))
+      print('✅',name,heard,round(score,3),flush=True)
+    lines=['| גרסה | התאמת תמלול (אינה מודדת מסתורין או מבטא) | תמלול | שניות | SHA-256 PCM |','|---|---:|---|---:|---|']
+    lines += [f'| {n} | {sc:.3f} | {h} | {dur} | {sha[:12]} |' for n,sc,h,dur,sha in rows]
+    (root/'results.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    print('\n'.join(lines),flush=True)
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('task',choices=['references','check-hebrew','compare-variants'],nargs='?',default='references')
+    parser.add_argument('task',choices=['references','check-hebrew','compare-variants','mysterious-references','mysterious-hebrew'],nargs='?',default='references')
     args=parser.parse_args()
-    {'references': references, 'check-hebrew': check_hebrew, 'compare-variants': compare_variants}[args.task]()
+    {'references': references, 'check-hebrew': check_hebrew, 'compare-variants': compare_variants, 'mysterious-references': mysterious_references, 'mysterious-hebrew': mysterious_hebrew}[args.task]()
+
