@@ -1,26 +1,91 @@
-name: synthetic-reference-test
+name: "ניסוי קול: מקור סינתטי ועברית"
 on:
   workflow_dispatch:
+    inputs:
+      phase:
+        description: "שלב: references או hebrew"
+        required: true
+        default: hebrew
+        type: choice
+        options: [hebrew, references]
 permissions:
   contents: read
+  actions: read
 jobs:
-  generate:
+  hebrew:
+    if: inputs.phase == 'hebrew'
+    name: "הדגמת הקול הכסוף בעברית"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: "1. משיכת קוד הניסוי"
+        uses: actions/checkout@v4
+      - name: "2. הורדת מודל עברית וכלי יצירה"
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake build-essential libsndfile1
+          git clone -q --depth 1 --recurse-submodules --shallow-submodules https://github.com/ServeurpersoCom/qwentts.cpp.git qwentts
+          cmake -S qwentts -B qwentts/build -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build qwentts/build -j 2
+          mkdir -p models
+          curl -fL --retry 3 -o models/talker.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf
+          curl -fL --retry 3 -o models/codec.gguf https://huggingface.co/notmax123/QwenTTS-he-1.7B-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf
+          echo "מודל העברית וכלי היצירה מוכנים" >> "$GITHUB_STEP_SUMMARY"
+      - name: "3. הורדת הקול הכסוף שנוצר בניסוי"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/${{ github.repository }}/actions/artifacts/10913764092/zip > references.zip
+          unzip -p references.zip silver.wav > silver.wav
+          printf '%s\n' 'The quiet signal was hidden beneath the noise. Now we know where to look.' > silver.txt
+          ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1 silver.wav
+          echo "דגימת קול מקורית: silver.wav (5.44 שניות)" >> "$GITHUB_STEP_SUMMARY"
+      - name: "4. יצירת משפט מבחן בעברית"
+        run: |
+          set -euo pipefail
+          mkdir -p hebrew-output
+          printf '%s' 'ʃalˈom, mˈa ʃlomχˈa hajˈom?' | qwentts/build/qwen-tts --model models/talker.gguf --codec models/codec.gguf --ref-wav silver.wav --ref-text silver.txt --lang auto --greedy -o hebrew-output/silver-hebrew.wav
+          echo "נוצר משפט בדיקה: שלום, מה שלומך היום?" >> "$GITHUB_STEP_SUMMARY"
+      - name: "5. בדיקת הבנה באמצעות תמלול"
+        run: |
+          set -euo pipefail
+          pip install --disable-pip-version-check soundfile faster-whisper
+          python generate.py check-hebrew
+          echo "תמלול אוטומטי (לא אישור סופי): $(cat hebrew-output/asr.txt)" >> "$GITHUB_STEP_SUMMARY"
+      - name: "6. העלאת דגימה ותמלול"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebrew-silver-test
+          path: hebrew-output/*
+          if-no-files-found: warn
+          retention-days: 1
+  references:
+    if: inputs.phase == 'references'
+    name: "יצירת שלוש דגימות מקור באנגלית"
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: "1. משיכת קוד הניסוי"
+        uses: actions/checkout@v4
+      - name: "2. הכנת פייתון ומטמון מודל"
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface/hub
           key: qwen-voice-design-1.7b-v1
-      - run: pip install 'qwen-tts==0.1.1' soundfile
-      - run: pip install --force-reinstall 'torch==2.8.0+cpu' 'torchaudio==2.8.0+cpu' --index-url https://download.pytorch.org/whl/cpu
-      - run: python -c 'import torch,torchaudio; print(torch.__version__, torchaudio.__version__)'
-      - run: python generate.py
-      - uses: actions/upload-artifact@v4
+      - name: "3. התקנת כלים וגרסאות CPU"
+        run: |
+          pip install 'qwen-tts==0.1.1' soundfile
+          pip install --force-reinstall 'torch==2.8.0+cpu' 'torchaudio==2.8.0+cpu' --index-url https://download.pytorch.org/whl/cpu
+      - name: "4. יצירת שלוש דגימות סינתטיות"
+        run: python generate.py references
+      - name: "5. העלאת דגימות המקור"
+        uses: actions/upload-artifact@v4
         with:
           name: synthetic-references
           path: synthetic-references/*.wav
