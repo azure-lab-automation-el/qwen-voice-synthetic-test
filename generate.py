@@ -103,7 +103,8 @@ def mysterious_references():
       'secret':'An original fictional female narrator, not any real person. An ethereal silver female voice, warm and sweet, now carrying a private secret. Low-volume intimate delivery, slightly husky lower register, unhurried, expressive but restrained, no imitation.',
     }
     model=Qwen3TTSModel.from_pretrained('Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign',device_map='cpu',dtype=torch.float32,attn_implementation='sdpa')
-    for name,instruct in designs.items():
+    for index,(name,instruct) in enumerate(designs.items()):
+      torch.manual_seed(20260926 + index)
       with torch.inference_mode():
         audio,sr=model.generate_voice_design(text=text,language='English',instruct=instruct,non_streaming_mode=True,max_new_tokens=2048)
       sf.write(out/f'{name}.wav',audio[0],sr)
@@ -118,7 +119,8 @@ def mysterious_hebrew():
     import subprocess,hashlib
     root=Path('mysterious-output');root.mkdir(exist_ok=True)
     target='יש לי סוד קטן, ואני אגלה לך אותו רק בסוף השיעור.'
-    ipa='jeʃ li sod kaˈtan... vaʔaˈni ʔaɡaˈle leˈχa ʔoto rak bəˈsof haʃiˈʔur.'
+    ipa=Path('mysterious-output/prompt.ipa').read_text(encoding='utf-8').strip()
+    print('🔤 הגייה מנוקדת:',ipa,flush=True)
     model=WhisperModel('small',device='cpu',compute_type='int8')
     rows=[];fingerprints=set()
     for name in ('velvet','moon','secret'):
