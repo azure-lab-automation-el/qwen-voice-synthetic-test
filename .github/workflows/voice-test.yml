@@ -8,7 +8,7 @@ on:
         required: true
         default: hebrew
         type: choice
-        options: [hebrew, references, mysterious, image-bootstrap, image-build, image-build-v2]
+        options: [hebrew, references, mysterious, image-bootstrap, image-build, image-build-v2, image-build-v3]
 permissions:
   contents: read
   actions: read
@@ -193,6 +193,47 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v2
           echo "✅ runtime-v2 הועלה; דיג׳סט ייקבע מקריאת החבילה" >> "$GITHUB_STEP_SUMMARY"
+  image_v3:
+    if: inputs.phase == 'image-build-v3'
+    name: "בניית אימג׳ קומפקטי עם מנוע נייד לכל מעבד"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "1. בניית מנוע נייד והפרדת סביבת הרצה"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/public-voice-v3
+          cat > /tmp/public-voice-v3/Dockerfile <<'DOCKERFILE'
+          FROM ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:2dd4bd75ad4c601d5525bd816bbb26d0001563cec33e7cb163d229fe190c3bb2 AS builder
+          RUN cmake -S /opt/qwentts -B /opt/qwentts/build-portable -DGGML_NATIVE=OFF -DGGML_AVX512=OFF -DGGML_AVX2=OFF -DGGML_AVX=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF -DGGML_BMI2=OFF -DGGML_SSE42=OFF -DGGML_BLAS=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS='-march=x86-64' -DCMAKE_CXX_FLAGS='-march=x86-64' \
+              && cmake --build /opt/qwentts/build-portable -j 2 --target qwen-tts
+          FROM python:3.12-slim-bookworm
+          LABEL org.opencontainers.image.description="Public portable synthetic Hebrew voice runtime; no user data."
+          RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 ffmpeg libgomp1 ca-certificates curl unzip \
+              && rm -rf /var/lib/apt/lists/*
+          COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+          COPY --from=builder /opt/models /opt/models
+          COPY --from=builder /opt/qwentts/build-portable/ /opt/qwentts/build/
+          ENV PATH="/opt/qwentts/build:${PATH}"
+          WORKDIR /workspace
+          RUN test -x /opt/qwentts/build/qwen-tts && test -s /opt/models/renikud/model.onnx \
+              && python -c "from renikud_onnx import G2P; print(G2P(model_path='/opt/models/renikud/model.onnx',niqqud='use',datastore=None).phonemize('סוֹד',speaker=2,target_speaker=2))" \
+              && /opt/qwentts/build/qwen-tts --help >/dev/null 2>&1
+          DOCKERFILE
+          docker build -t ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3 /tmp/public-voice-v3
+          docker image inspect ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3 --format 'local bytes={{.Size}}'
+          docker history ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3 | head -25
+      - name: "2. העלאת אימג׳ ציבורי נייד v3"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3
+          echo "✅ גרסה 3 נדחפה; יש לבדוק הרצת סינתזה אמיתית לפני אימוץ" >> "$GITHUB_STEP_SUMMARY"
   mysterious:
     if: inputs.phase == 'mysterious'
     name: "שלוש גרסאות מסתוריות של הקול הכסוף"
