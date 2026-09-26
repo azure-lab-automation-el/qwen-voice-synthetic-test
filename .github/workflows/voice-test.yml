@@ -241,7 +241,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
-      image: ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:b5d985247e58bc0dac9c91dd5bb66321526601465c87b88b4ba57af4425c2607
+      image: ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:d59bf349ff0baaf62d50ce0b87370a8d306a15d8e87d40022afaf3c87572cf66
     defaults:
       run:
         shell: bash
@@ -276,7 +276,7 @@ jobs:
           from renikud_onnx import G2P
           from pathlib import Path
           text='יֵשׁ לִי סוֹד קָטָן... וַאֲנִי אֲגַלֶּה לְךָ אוֹתוֹ רַק בְּסוֹף הַשִּׁיעוּר.'
-          g2p=G2P(niqqud='use',datastore=None)
+          g2p=G2P(model_path='/opt/models/renikud/model.onnx',niqqud='use',datastore=None)
           ipa=g2p.phonemize(text,speaker=2,target_speaker=2)
           print('IPA verified from pointed Hebrew:',ipa)
           Path('mysterious-output/prompt.ipa').write_text(ipa,encoding='utf-8')
