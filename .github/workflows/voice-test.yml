@@ -8,7 +8,7 @@ on:
         required: true
         default: hebrew
         type: choice
-        options: [hebrew, references, mysterious, image-bootstrap, image-build, image-build-v2, image-build-v3]
+        options: [hebrew, references, mysterious, image-bootstrap, image-build, image-build-v2, image-build-v3, image-build-v4]
 permissions:
   contents: read
   actions: read
@@ -235,6 +235,45 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3
           echo "✅ גרסה 3 נדחפה; יש לבדוק הרצת סינתזה אמיתית לפני אימוץ" >> "$GITHUB_STEP_SUMMARY"
+  image_v4:
+    if: inputs.phase == 'image-build-v4'
+    name: "אימג׳ דק לבדיקת הקול ללא PyTorch של יצירת מקור"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "1. הרכבת סביבת הרצה דקה וכלי קול ניידים"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/public-voice-v4
+          cat > /tmp/public-voice-v4/Dockerfile <<'DOCKERFILE'
+          FROM ghcr.io/azure-lab-automation-el/synthetic-voice-runtime@sha256:d59bf349ff0baaf62d50ce0b87370a8d306a15d8e87d40022afaf3c87572cf66 AS source
+          FROM python:3.12-slim-bookworm
+          LABEL org.opencontainers.image.description="Public portable Hebrew voice runtime without reference-generation PyTorch; no user data."
+          RUN apt-get update && apt-get install -y --no-install-recommends libsndfile1 ffmpeg libgomp1 ca-certificates curl unzip \
+              && rm -rf /var/lib/apt/lists/* \
+              && python -m pip install --no-cache-dir soundfile 'faster-whisper==1.2.1' 'renikud-plus==0.5.0'
+          COPY --from=source /opt/models /opt/models
+          COPY --from=source /opt/qwentts/build/ /opt/qwentts/build/
+          ENV PATH="/opt/qwentts/build:${PATH}"
+          ENV LD_LIBRARY_PATH="/opt/qwentts/build"
+          WORKDIR /workspace
+          RUN python -c "from renikud_onnx import G2P; import faster_whisper,soundfile; print(G2P(model_path='/opt/models/renikud/model.onnx',niqqud='use',datastore=None).phonemize('סוֹד',speaker=2,target_speaker=2))" \
+              && ( /opt/qwentts/build/qwen-tts --help > /tmp/qwen-help.txt 2>&1; code=$?; test "$code" -eq 1; grep -q "Usage:" /tmp/qwen-help.txt ) \
+              && ! python -c 'import torch' 2>/dev/null
+          DOCKERFILE
+          docker build -t ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v4 /tmp/public-voice-v4
+          docker image inspect ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v4 --format 'local bytes={{.Size}}'
+      - name: "2. העלאת אימג׳ דק v4"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v4
+          echo "✅ אימג׳ v4 הועלה, מותנה במבחן השוואת זמן ושלוש דגימות" >> "$GITHUB_STEP_SUMMARY"
   mysterious:
     if: inputs.phase == 'mysterious'
     name: "שלוש גרסאות מסתוריות של הקול הכסוף"
