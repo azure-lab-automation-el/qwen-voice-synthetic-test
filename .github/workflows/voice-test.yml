@@ -8,7 +8,7 @@ on:
         required: true
         default: hebrew
         type: choice
-        options: [hebrew, references, mysterious]
+        options: [hebrew, references, mysterious, image-bootstrap]
 permissions:
   contents: read
   actions: read
@@ -88,6 +88,28 @@ jobs:
             hebrew-output/results.md
           if-no-files-found: warn
           retention-days: 1
+  bootstrap:
+    if: inputs.phase == 'image-bootstrap'
+    name: "יצירת חבילת פתיחה קטנה לאימג׳ ציבורי"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: "1. בניית אימג׳ מינימלי ללא נתוני משתמש"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/voice-image-empty
+          printf 'FROM alpine:3.20\nRUN true\n' > /tmp/voice-image-empty/Dockerfile
+          docker build --pull -t ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap /tmp/voice-image-empty
+      - name: "2. העלאת חבילת הפתיחה בלבד"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap
+          docker image inspect ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap --format '{{.Size}} bytes local image'
   mysterious:
     if: inputs.phase == 'mysterious'
     name: "שלוש גרסאות מסתוריות של הקול הכסוף"
