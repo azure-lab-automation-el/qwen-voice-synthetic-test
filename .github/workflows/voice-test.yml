@@ -276,7 +276,7 @@ jobs:
           echo "✅ אימג׳ v4 הועלה, מותנה במבחן השוואת זמן ושלוש דגימות" >> "$GITHUB_STEP_SUMMARY"
   mysterious:
     if: inputs.phase == 'mysterious'
-    name: "שלוש גרסאות מסתוריות של הקול הכסוף"
+    name: "קול moon הנבחר לשיעורים"
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     container:
@@ -287,19 +287,22 @@ jobs:
     steps:
       - name: "1. משיכת קוד הניסוי"
         uses: actions/checkout@v4
-      - name: "2. שחזור שלוש דגימות המקור השמורות"
+      - name: "2. פענוח דגימת moon המוצפנת ובדיקת טביעת האצבע"
         env:
-          GH_TOKEN: ${{ github.token }}
+          MOON_AGE_KEY: ${{ secrets.MOON_AGE_KEY }}
         run: |
           set -euo pipefail
-          echo "⏳ משחזרת שלוש דגימות מקור קבועות מההרצה הקודמת..."
-          curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/10915802171/zip" -o references.zip
-          unzip -oq references.zip 'mysterious-references/*'
-          for name in velvet moon secret; do
-            test -s "mysterious-references/$name.wav"
-            sha256sum "mysterious-references/$name.wav"
-          done
-          echo "✅ שלוש דגימות מקור זהות לשמורות, ללא יצירת קול חדשה"
+          test -n "$MOON_AGE_KEY"
+          apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq age
+          mkdir -p mysterious-references
+          keyfile="$(mktemp)"
+          chmod 600 "$keyfile"
+          trap 'rm -f "$keyfile"' EXIT
+          printf '%s\n' "$MOON_AGE_KEY" > "$keyfile"
+          age -d -i "$keyfile" -o mysterious-references/moon.wav 1-moon.wav.age
+          echo '48ce34759c7265f0fab5bceab0f896b789a160471785b30a34cd2c2b5883e5ea  mysterious-references/moon.wav' | sha256sum -c -
+          printf '%s\n' 'There is a small secret in this lesson. Wait for the last page, and I will tell you what it is.' > mysterious-references/moon.txt
+          echo "✅ דגימת moon פוענחה ונבדקה; המקור נשאר ב-MEGA ללא הצפנה"
       - name: "3. שימוש במנוע ובמודל מוכנים מתוך אימג׳ ציבורי"
         run: |
           set -euo pipefail
@@ -307,7 +310,7 @@ jobs:
           test -s /opt/models/talker.gguf
           test -s /opt/models/codec.gguf
           echo "✅ מנוע ומודל עברי נמצאים באימג׳, ללא התקנה או הורדה"
-      - name: "4. יצירת הגייה ובדיקת שלוש דגימות שונות"
+      - name: "4. יצירת הגייה ובדיקת קול moon"
         run: |
           set -euo pipefail
           mkdir -p mysterious-output
@@ -322,17 +325,15 @@ jobs:
           PY_G2P
           python generate.py mysterious-hebrew
           cat mysterious-output/results.md >> "$GITHUB_STEP_SUMMARY"
-      - name: "5. העלאת הדגימות וטבלת ההבנה"
+      - name: "5. העלאת דגימת moon וטבלת ההבנה"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: silver-mysterious-hebrew
+          name: moon-lesson-voice-hebrew
           path: |
-            mysterious-output/*.ogg
+            mysterious-output/moon.ogg
             mysterious-output/results.md
             mysterious-output/prompt.ipa
-            mysterious-references/*.wav
-            mysterious-references/*.txt
           if-no-files-found: warn
           retention-days: 1
   references:
