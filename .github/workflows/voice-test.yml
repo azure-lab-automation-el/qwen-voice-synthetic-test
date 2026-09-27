@@ -285,55 +285,20 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: "1. משיכת קוד הניסוי"
+      - name: "משיכת קוד"
         uses: actions/checkout@v4
-      - name: "2. פענוח דגימת moon המוצפנת ובדיקת טביעת האצבע"
+      - name: "יצירת moon עם לוג פרטי"
         env:
           MOON_AGE_KEY: ${{ secrets.MOON_AGE_KEY }}
-        run: |
-          set -euo pipefail
-          test -n "$MOON_AGE_KEY"
-          apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq age
-          mkdir -p mysterious-references
-          keyfile="$(mktemp)"
-          chmod 600 "$keyfile"
-          trap 'rm -f "$keyfile"' EXIT
-          printf '%s\n' "$MOON_AGE_KEY" > "$keyfile"
-          age -d -i "$keyfile" -o mysterious-references/moon.wav 1-moon.wav.age
-          echo '48ce34759c7265f0fab5bceab0f896b789a160471785b30a34cd2c2b5883e5ea  mysterious-references/moon.wav' | sha256sum -c -
-          printf '%s\n' 'There is a small secret in this lesson. Wait for the last page, and I will tell you what it is.' > mysterious-references/moon.txt
-          echo "✅ דגימת moon פוענחה ונבדקה; המקור נשאר ב-MEGA ללא הצפנה"
-      - name: "3. שימוש במנוע ובמודל מוכנים מתוך אימג׳ ציבורי"
-        run: |
-          set -euo pipefail
-          test -x /opt/qwentts/build/qwen-tts
-          test -s /opt/models/talker.gguf
-          test -s /opt/models/codec.gguf
-          echo "✅ מנוע ומודל עברי נמצאים באימג׳, ללא התקנה או הורדה"
-      - name: "4. יצירת הגייה ובדיקת קול moon"
-        run: |
-          set -euo pipefail
-          mkdir -p mysterious-output
-          python - <<'PY_G2P'
-          from renikud_onnx import G2P
-          from pathlib import Path
-          text='יֵשׁ לִי סוֹד קָטָן... וַאֲנִי אֲגַלֶּה לְךָ אוֹתוֹ רַק בְּסוֹף הַשִּׁיעוּר.'
-          g2p=G2P(model_path='/opt/models/renikud/model.onnx',niqqud='use',datastore=None)
-          ipa=g2p.phonemize(text,speaker=2,target_speaker=2)
-          print('IPA verified from pointed Hebrew:',ipa)
-          Path('mysterious-output/prompt.ipa').write_text(ipa,encoding='utf-8')
-          PY_G2P
-          python generate.py mysterious-hebrew
-          cat mysterious-output/results.md >> "$GITHUB_STEP_SUMMARY"
-      - name: "5. העלאת דגימת moon וטבלת ההבנה"
+        run: bash 1-moon-run.sh
+      - name: "העלאת תוצאה ולוג מוצפנים בלבד"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: moon-lesson-voice-hebrew
+          name: moon-private-result
           path: |
-            mysterious-output/moon.ogg
-            mysterious-output/results.md
-            mysterious-output/prompt.ipa
+            moon-run.log.age
+            moon-output.tar.gz.age
           if-no-files-found: warn
           retention-days: 1
   references:
