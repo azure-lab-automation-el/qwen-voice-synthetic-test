@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "שלב: references או hebrew"
+        description: "שלב: קול moon מוצפן"
         required: true
-        default: hebrew
+        default: mysterious
         type: choice
-        options: [hebrew, references, mysterious, image-bootstrap, image-build, image-build-v2, image-build-v3, image-build-v4]
+        options: [mysterious]
 permissions:
   contents: read
   actions: read
 jobs:
   hebrew:
-    if: inputs.phase == 'hebrew'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "הדגמת הקול הכסוף בעברית"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -89,7 +89,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
   bootstrap:
-    if: inputs.phase == 'image-bootstrap'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "יצירת חבילת פתיחה קטנה לאימג׳ ציבורי"
     runs-on: ubuntu-24.04
     permissions:
@@ -111,7 +111,7 @@ jobs:
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap
           docker image inspect ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:bootstrap --format '{{.Size}} bytes local image'
   image:
-    if: inputs.phase == 'image-build'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "בניית אימג׳ ציבורי שנבדק ללא מידע פרטי"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -163,7 +163,7 @@ jobs:
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v1
           echo "✅ אימג׳ runtime-v1 הועלה; את הדיג׳סט קובעים מקריאת החבילה" >> "$GITHUB_STEP_SUMMARY"
   image_v2:
-    if: inputs.phase == 'image-build-v2'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "אפיית מודל הניקוד לאימג׳ ציבורי v2"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -194,7 +194,7 @@ jobs:
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v2
           echo "✅ runtime-v2 הועלה; דיג׳סט ייקבע מקריאת החבילה" >> "$GITHUB_STEP_SUMMARY"
   image_v3:
-    if: inputs.phase == 'image-build-v3'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "בניית אימג׳ קומפקטי עם מנוע נייד לכל מעבד"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -236,7 +236,7 @@ jobs:
           docker push ghcr.io/azure-lab-automation-el/synthetic-voice-runtime:runtime-v3
           echo "✅ גרסה 3 נדחפה; יש לבדוק הרצת סינתזה אמיתית לפני אימוץ" >> "$GITHUB_STEP_SUMMARY"
   image_v4:
-    if: inputs.phase == 'image-build-v4'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "אימג׳ דק לבדיקת הקול ללא PyTorch של יצירת מקור"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -302,7 +302,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
   references:
-    if: inputs.phase == 'references'
+    if: ${{ false }} # disabled: old public logs/artifacts
     name: "יצירת שלוש דגימות מקור באנגלית"
     runs-on: ubuntu-24.04
     timeout-minutes: 180
