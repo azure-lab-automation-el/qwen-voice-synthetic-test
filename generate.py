@@ -123,7 +123,7 @@ def mysterious_hebrew():
     print('🔤 הגייה מנוקדת:',ipa,flush=True)
     model=WhisperModel('small',device='cpu',compute_type='int8')
     rows=[];fingerprints=set()
-    for name in ('velvet','moon','secret'):
+    for name in ('moon',):
       ref=Path('mysterious-references')/f'{name}.wav'
       short=root/f'{name}-short.wav'
       subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i',str(ref),'-t','2.7','-af','afade=t=out:st=2.45:d=0.25',str(short)],check=True)
